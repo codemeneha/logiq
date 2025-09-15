@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogiQ - Tech-Powered Logistics</title>
+    
+    <link rel="stylesheet" href="home.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="style.css" rel="stylesheet">
+</head>
+<body>
+
+    <header class="hero-section">
+        <video class="background-video" src="index.mp4" autoplay loop muted playsinline></video>
+        <div class="video-overlay"></div>
+
+        <div class="container">
+            <nav class="main-nav">
+                <a href="#" class="logo">
+                    <img src="logo.png" alt="LogiQ Logo">
+                    <span>LogiQ</span>
+                </a>
+                <ul>
+                    <li><a href="home.html" class="active">Home</a></li>
+                    <li><a href="#">Services</a></li>
+                    <li><a href="about.html">About</a></li>
+                </ul>
+            </nav>
+
+            <div class="hero-content">
+                <h1>LogiQ <br> – Smarter Fleet Optimization<br></h1>
+                <p>Rule the Route<p>
+                <button id="enter-button" class="cta-button">Enter</button>
+            </div>
+        </div>
+    </header>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // This now correctly finds the button using its ID
+            const enterButton = document.getElementById('enter-button');
+            
+            // This part of the script looks for a second button which doesn't exist here,
+            // but it won't cause an error.
+            const navEnterButton = document.getElementById('nav-enter-button');
+            
+            // Function to redirect to fleet.html
+            const redirectToFleet = () => {
+                window.location.href = 'fleet.html';
+            };
+
+            // Handle button click
+            if (enterButton) {
+                enterButton.addEventListener('click', redirectToFleet);
+            }
+            if (navEnterButton) {
+                navEnterButton.addEventListener('click', redirectToFleet);
+            }
+
+            // Handle keyboard "Enter" key press on the whole document
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    redirectToFleet();
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>

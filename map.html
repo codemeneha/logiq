@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LogiQ – Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { height: 100%; margin: 0; font-family: Inter, Arial, sans-serif; }
+    #map { height: 100%; width: 100%; }
+
+    /* ETA box */
+    .eta {
+      position: absolute; bottom: 20px; left: 20px; z-index: 1000;
+      background: #fff; padding: 12px; border-radius: 12px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.2);
+      width: 260px;
+    }
+    .eta p { margin: 6px 0; font-weight: 600; }
+    .traffic { color: #ef4444; }
+    .classical { color: #10b981; }
+    .quantum { color: #7c3aed; }
+    .tolls { color: #f59e0b; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- ETA Box -->
+  <div class="eta">
+    <h3>⏱ ETA</h3>
+    <p id="eta-traffic" class="traffic">🚦 Traffic: —</p>
+    <p id="eta-classical" class="classical">✅ Classical: —</p>
+    <p id="eta-quantum" class="quantum">⚛ Quantum: —</p>
+    <p id="eta-tolls" class="tolls">💰 Tolls: —</p>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Parse URL parameters
+    const params = new URLSearchParams(window.location.search);
+    const vehicle = params.get("vehicle");
+    const cc = params.get("cc");
+    const dest = params.get("dest");
+
+    if (!vehicle || !cc || !dest) {
+      alert("Missing parameters from fleet.html");
+      throw new Error("Missing parameters");
+    }
+
+    const map = L.map('map').setView([20, 78], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let start = null;
+    let destMarker = null;
+    let routeLayers = [];
+    let tollMarkers = [];
+
+    const tollIcon = L.icon({
+      iconUrl: "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -28]
+    });
+
+    // ---- Reverse geocode helper ----
+    async function reverseGeocode(lat, lng) {
+      const res = await fetch(`http://127.0.0.1:8000/reverse_geocode?lat=${lat}&lng=${lng}`);
+      const data = await res.json();
+      return data.name || "Unknown place";
+    }
+
+    function clearETAs() {
+      document.getElementById('eta-traffic').textContent = "🚦 Traffic: —";
+      document.getElementById('eta-classical').textContent = "✅ Classical: —";
+      document.getElementById('eta-quantum').textContent = "⚛ Quantum: —";
+      document.getElementById('eta-tolls').textContent = "💰 Tolls: —";
+    }
+
+    function removeRoutes() {
+      routeLayers.forEach(l => map.removeLayer(l));
+      routeLayers = [];
+      tollMarkers.forEach(m => map.removeLayer(m));
+      tollMarkers = [];
+    }
+
+    function drawRoute(coords, color) {
+      const weight = (color === "#7c3aed") ? 8 : 5;
+      const poly = L.polyline(coords, { color, weight, opacity: 0.9 }).addTo(map);
+      routeLayers.push(poly);
+    }
+
+    async function computeRoutes(end) {
+      clearETAs(); removeRoutes();
+      const res = await fetch("http://127.0.0.1:8000/routes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start, end, vehicle, cc })
+      });
+      const data = await res.json();
+
+      if (data.traffic) {
+        drawRoute(data.traffic.polyline, "#ef4444");
+        document.getElementById('eta-traffic').textContent = `🚦 Traffic: ${data.traffic.eta}`;
+      }
+      if (data.classical) {
+        drawRoute(data.classical.polyline, "#10b981");
+        document.getElementById('eta-classical').textContent = `✅ Classical: ${data.classical.eta}`;
+      }
+      if (data.quantum) {
+        drawRoute(data.quantum.polyline, "#7c3aed");
+        document.getElementById('eta-quantum').textContent = `⚛ Quantum: ${data.quantum.eta}`;
+      }
+
+      if (data.tolls) {
+        data.tolls.forEach(t => {
+          const marker = L.marker([t.lat, t.lng], { icon: tollIcon })
+            .addTo(map).bindPopup(`💰 Toll at: ${t.place || "Unknown Toll Location"}`);
+          tollMarkers.push(marker);
+        });
+        const total = data.tolls.reduce((a,b)=>a+b.cost,0);
+        document.getElementById("eta-tolls").textContent = `💰 Tolls: ${data.tolls.length} | ₹${total}`;
+      }
+    }
+
+    // Get user location
+    map.locate({ setView: true, maxZoom: 16 });
+    map.on('locationfound', async e => { 
+      start = e.latlng;
+      const place = await reverseGeocode(start.lat, start.lng);
+      L.marker(start).addTo(map).bindPopup(`🚚 You are at: ${place}`).openPopup();
+      geocodeAndCompute();
+    });
+    map.on('locationerror', async () => {
+      alert("Could not get your location. Using default (Vizag).");
+      start = L.latLng(17.6868, 83.2185);
+      const place = await reverseGeocode(start.lat, start.lng);
+      L.marker(start).addTo(map).bindPopup(`📍 Default Start: ${place}`).openPopup();
+      geocodeAndCompute();
+    });
+
+    // Convert destination name to lat/lng and compute routes
+    async function geocodeAndCompute() {
+      const geoRes = await fetch(`http://127.0.0.1:8000/geocode?query=${encodeURIComponent(dest)}`);
+      const geoData = await geoRes.json();
+      if (!geoData.lat) return alert("Destination not found");
+      const end = L.latLng(geoData.lat, geoData.lng);
+
+      const place = await reverseGeocode(end.lat, end.lng);
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker(end).addTo(map).bindPopup(`🎯 Destination: ${place}`).openPopup();
+
+      computeRoutes(end);
+    }
+  </script>
+</body>
+</html>
